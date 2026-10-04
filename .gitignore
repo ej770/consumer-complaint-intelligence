@@ -1,0 +1,11 @@
+# Raw and intermediate data are re-created by `python run_all.py`
+data/raw/
+data/processed/
+dashboard/dashboard_data.json
+# Power BI tables are large; generate them locally with `python run_all.py`
+powerbi/*.csv
+site/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store

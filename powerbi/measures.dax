@@ -1,0 +1,49 @@
+// Starter DAX measures for the Consumer Complaint Intelligence model.
+// Load fact_complaints.csv and the four dim_*.csv files, create the relationships listed in
+// README.md, then add each measure below to fact_complaints (Modeling > New measure).
+
+Complaints = COUNTROWS ( fact_complaints )
+
+Relief Count = SUM ( fact_complaints[relief] )
+
+Relief Rate = DIVIDE ( [Relief Count], [Complaints] )
+
+Monetary Relief Rate = DIVIDE ( SUM ( fact_complaints[monetary_relief] ), [Complaints] )
+
+Timely Response Rate = DIVIDE ( SUM ( fact_complaints[timely] ), [Complaints] )
+
+Template Text Share = DIVIDE ( SUM ( fact_complaints[is_duplicate_text] ), [Complaints] )
+
+// Relief rate you would expect from the current selection's product mix alone:
+// for each product, its national relief rate (all complaints) weighted by how many complaints
+// of that product are in the current selection. Compare with [Relief Rate] to see whether a
+// theme, company or region does better or worse than its product mix predicts.
+Expected Relief Rate (Product Mix) =
+DIVIDE (
+    SUMX (
+        VALUES ( dim_product[product] ),
+        VAR p = dim_product[product]
+        VAR n = [Complaints]
+        VAR productRate =
+            CALCULATE ( [Relief Rate], REMOVEFILTERS ( fact_complaints ), dim_product[product] = p )
+        RETURN n * productRate
+    ),
+    [Complaints]
+)
+
+Relief Gap (pts) = ( [Relief Rate] - [Expected Relief Rate (Product Mix)] ) * 100
+
+// Model outputs ---------------------------------------------------------------------------
+// relief_score is an out-of-fold probability (each complaint scored by a model that never saw it).
+Avg Relief Score = AVERAGE ( fact_complaints[relief_score] )
+
+// Share of all relief cases found when reviewing only the top-N score deciles currently selected
+// (put relief_priority_decile on a slicer or axis).
+Relief Capture =
+DIVIDE (
+    [Relief Count],
+    CALCULATE ( [Relief Count], REMOVEFILTERS ( fact_complaints[relief_priority_decile] ) )
+)
+
+// Routing accuracy on the 20% hold-out set (route_correct is blank for training rows).
+Routing Accuracy (Hold-out) = AVERAGE ( fact_complaints[route_correct] )

@@ -1,0 +1,853 @@
+<title>Consumer Complaint Intelligence</title>
+<meta name="description" content="Independent analysis of 117,214 CFPB consumer complaints: who gets relief, what drives it, and how AI can triage complaints.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: a case-file dashboard. Filter row scopes everything below it; findings, then evidence, then the models. */
+:root {
+  --bg: #f3f5f8;
+  --card: #ffffff;
+  --ink: #111418;
+  --ink-2: #4a5260;
+  --muted: #687180;
+  --line: #e2e6eb;
+  --axis: #c5cbd3;
+  --track: #eef1f5;
+  --accent: #2a78d6;
+  --accent-wash: rgba(42, 120, 214, 0.10);
+  --neg: #e34948;
+  --context: #c4cad3;
+  --redact: #15181d;
+  --redact-edge: transparent;
+  --chip: #eef1f5;
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1014; --card: #161a20; --ink: #eef1f5; --ink-2: #b6bdc9; --muted: #8d96a5;
+    --line: #262c34; --axis: #3b434e; --track: #1f252d; --accent: #3987e5;
+    --accent-wash: rgba(57, 135, 229, 0.16); --neg: #e66767; --context: #3d4550;
+    --redact: #030405; --redact-edge: #3b434e; --chip: #1f252d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1014; --card: #161a20; --ink: #eef1f5; --ink-2: #b6bdc9; --muted: #8d96a5;
+  --line: #262c34; --axis: #3b434e; --track: #1f252d; --accent: #3987e5;
+  --accent-wash: rgba(57, 135, 229, 0.16); --neg: #e66767; --context: #3d4550;
+  --redact: #030405; --redact-edge: #3b434e; --chip: #1f252d; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 14px; line-height: 1.5; }
+.page { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 22px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+.mono { font-family: var(--font-mono); }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Masthead */
+.masthead { display: grid; gap: 10px; padding-bottom: 6px; }
+.masthead h1 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+.lede { font-size: 17px; color: var(--ink-2); max-width: 64ch; }
+.source { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.stamp { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--axis); border-radius: 4px; color: var(--ink-2); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; width: fit-content; }
+
+/* Filter row */
+.filters { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 14px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border: 1px solid var(--line); border-radius: var(--radius); }
+.filter { display: flex; align-items: center; gap: 8px; }
+.filter label, .filter .flabel { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.seg { display: inline-flex; border: 1px solid var(--axis); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.seg button + button { border-left: 1px solid var(--axis); }
+.seg button[aria-pressed="true"] { background: var(--accent-wash); color: var(--ink); font-weight: 600; }
+select { padding: 6px 30px 6px 10px; border: 1px solid var(--axis); border-radius: 8px; background: var(--card); font-size: 13px; max-width: 100%; }
+.reset { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 13px; padding: 4px 2px; }
+.scope { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+/* KPI row */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 4px; align-content: start; min-width: 0; }
+.tile .label { font-size: 12px; color: var(--ink-2); font-weight: 600; }
+.tile .value { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.tile .compare { font-size: 12px; color: var(--muted); }
+.spark { width: 100%; height: 28px; display: block; margin-top: 4px; }
+
+/* Findings */
+.findings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.finding { border-top: 2px solid var(--ink); padding-top: 10px; display: grid; gap: 4px; min-width: 0; }
+.finding h3 { font-size: 14px; font-weight: 700; }
+.finding p { color: var(--ink-2); font-size: 13px; }
+
+/* Cards & grid */
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.card { grid-column: span 6; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 18px 14px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.card.wide { grid-column: span 12; }
+.card header { display: grid; gap: 4px; }
+.card h2 { font-size: 17px; font-weight: 700; }
+.card .sub { font-size: 13px; color: var(--ink-2); max-width: 70ch; }
+.section-head { display: grid; gap: 6px; margin-top: 14px; }
+.section-head h2 { font-size: 24px; font-weight: 800; letter-spacing: -0.01em; }
+.section-head p { color: var(--ink-2); max-width: 75ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); display: inline-block; }
+.key-dot.neg { background: var(--neg); }
+.key-ring { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-2); background: var(--card); display: inline-block; }
+.key-bar { width: 14px; height: 8px; border-radius: 2px; background: var(--accent); display: inline-block; }
+.key-bar.neg { background: var(--neg); }
+.note { font-size: 12px; color: var(--muted); }
+
+/* Row charts (bars, dumbbells, diverging) */
+.rows { display: grid; gap: 2px; }
+.axis-row, .row { display: grid; grid-template-columns: minmax(120px, 34%) minmax(0, 1fr) 64px; align-items: center; gap: 10px; }
+.axis-row { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.axis { position: relative; height: 16px; }
+.axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.axis span:first-child { transform: none; }
+.axis span:last-child { transform: translateX(-100%); }
+.row { min-height: 30px; padding: 2px 0; border-radius: 6px; text-align: left; border: 0; background: none; width: 100%; }
+button.row { cursor: pointer; }
+button.row:hover, .row:focus-visible { background: var(--accent-wash); }
+.row .lbl { font-size: 13px; line-height: 1.25; min-width: 0; overflow-wrap: anywhere; }
+.row .lbl small { display: block; color: var(--muted); font-size: 11px; }
+.row .val { font-size: 13px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.row .val.dim { color: var(--muted); font-weight: 500; }
+.track { position: relative; height: 22px; background-image: linear-gradient(to right, var(--line) 1px, transparent 1px); background-size: var(--tick, 25%) 100%; border-left: 1px solid var(--axis); }
+.bar { position: absolute; left: 0; top: 5px; height: 12px; background: var(--accent); border-radius: 0 4px 4px 0; }
+.bar.context { background: var(--context); }
+.bar.neg { background: var(--neg); border-radius: 4px 0 0 4px; }
+.track.div { border-left: 0; }
+.zero { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink-2); }
+.seg-line { position: absolute; top: 10px; height: 2px; border-radius: 2px; background: var(--accent); }
+.seg-line.neg { background: var(--neg); }
+.seg-line.neutral { background: var(--context); }
+.dot { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--card); }
+.dot.neg { background: var(--neg); }
+.ring { position: absolute; top: 5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--card); border: 2px solid var(--ink-2); }
+.toofew { position: absolute; left: 6px; top: 3px; font-size: 11px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .bar, .dot, .ring, .seg-line { transition: left .35s ease, width .35s ease; }
+}
+
+/* Tables */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+th { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+td .minibar { display: inline-block; vertical-align: middle; height: 8px; border-radius: 0 3px 3px 0; background: var(--accent); margin-right: 8px; }
+td .minitrack { display: inline-block; width: 70px; height: 8px; background: var(--track); vertical-align: middle; margin-right: 8px; position: relative; }
+td .minitrack i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 0 3px 3px 0; }
+.pos { color: var(--ink); }
+.gap-pos::before { content: "▲ "; color: var(--accent); font-size: 9px; }
+.gap-neg::before { content: "▼ "; color: var(--neg); font-size: 9px; }
+details { font-size: 13px; }
+summary { cursor: pointer; color: var(--accent); font-size: 12px; width: fit-content; }
+details[open] summary { margin-bottom: 8px; }
+
+/* Models */
+.model-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.model-grid .card { grid-column: span 6; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.stat b { font-size: 22px; font-weight: 700; }
+.stat span { font-size: 12px; color: var(--ink-2); }
+svg.chart { width: 100%; height: auto; display: block; overflow: visible; }
+svg .gridline { stroke: var(--line); stroke-width: 1; }
+svg .axisline { stroke: var(--axis); stroke-width: 1; }
+svg .tick { fill: var(--muted); font-size: 11px; font-family: var(--font-ui); }
+svg .lbl { fill: var(--ink); font-size: 12px; font-family: var(--font-ui); }
+svg .lbl2 { fill: var(--ink-2); font-size: 11px; font-family: var(--font-ui); }
+svg .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+svg .area { fill: var(--accent-wash); stroke: none; }
+svg .ref { fill: none; stroke: var(--context); stroke-width: 2; }
+svg .mark { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+svg .cross { stroke: var(--ink-2); stroke-width: 1; }
+svg .hit { fill: transparent; }
+.phrases { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.phrases h3 { font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-family: var(--font-mono); font-size: 12px; background: var(--chip); border-radius: 4px; padding: 2px 7px; }
+.confusions { display: grid; gap: 6px; font-size: 13px; color: var(--ink-2); padding: 0; margin: 0; list-style: none; }
+.confusions b { color: var(--ink); font-weight: 600; }
+
+/* Voice of the consumer */
+.theme-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.theme-picker button { border: 1px solid var(--axis); background: var(--card); border-radius: 999px; padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--ink-2); }
+.theme-picker button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); color: var(--ink); font-weight: 600; }
+.excerpts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.excerpt { border-left: 2px solid var(--axis); padding: 4px 0 4px 14px; display: grid; gap: 8px; min-width: 0; }
+.excerpt blockquote { margin: 0; font-size: 14px; line-height: 1.6; color: var(--ink); overflow-wrap: anywhere; }
+.redact { display: inline-block; width: 3.2em; height: 0.95em; background: var(--redact); border: 1px solid var(--redact-edge); border-radius: 2px; vertical-align: -0.12em; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); }
+.outcome { font-family: var(--font-ui); font-weight: 600; color: var(--ink-2); }
+.terms { font-size: 12px; color: var(--muted); }
+
+/* Methods */
+.methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; font-size: 13px; color: var(--ink-2); }
+.methods h3 { font-size: 13px; color: var(--ink); margin-bottom: 6px; }
+.methods ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.byline { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.byline a { color: var(--accent); }
+
+/* Tooltip */
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.14); max-width: 280px; display: grid; gap: 3px; }
+#tip .t-title { font-weight: 600; color: var(--ink-2); margin-bottom: 2px; }
+#tip div { display: flex; gap: 8px; justify-content: space-between; }
+#tip strong { font-variant-numeric: tabular-nums; }
+#tip span { color: var(--ink-2); }
+
+@media (max-width: 1000px) {
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .findings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card, .model-grid .card { grid-column: span 12; }
+  .methods { grid-template-columns: 1fr; }
+}
+@media (max-width: 620px) {
+  .page { padding-inline: 16px; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .findings, .excerpts, .phrases { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr; }
+  .axis-row, .row { grid-template-columns: minmax(96px, 38%) minmax(0, 1fr) 54px; gap: 8px; }
+  .scope { margin-left: 0; width: 100%; }
+  .filters { position: static; }
+  .kpis .tile:first-child { grid-column: span 2; }
+  .tile .value { font-size: 24px; }
+}
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <span class="stamp mono">Independent analysis · not affiliated with the CFPB</span>
+    <h1>Consumer Complaint Intelligence</h1>
+    <p class="lede" id="lede">Who gets relief when consumers complain about a bank, lender or credit bureau, what drives that outcome, and how machine learning can triage complaints before a person reads them.</p>
+    <div class="source mono" id="source"></div>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <div class="filter">
+      <span class="flabel" id="geo-label">Geography</span>
+      <div class="seg" role="group" aria-labelledby="geo-label" id="geo">
+        <button type="button" data-geo="all" aria-pressed="true">All U.S.</button>
+        <button type="button" data-geo="tx" aria-pressed="false">Texas</button>
+        <button type="button" data-geo="hou" aria-pressed="false">Greater Houston</button>
+      </div>
+    </div>
+    <div class="filter">
+      <label for="product">Product</label>
+      <select id="product"><option value="-1">All products</option></select>
+    </div>
+    <button type="button" class="reset" id="reset">Reset filters</button>
+    <span class="scope" id="scope" aria-live="polite"></span>
+  </section>
+
+  <section class="kpis" aria-label="Headline numbers" id="kpis"></section>
+
+  <section class="findings" aria-label="Key findings, all U.S." id="findings"></section>
+
+  <section class="grid">
+    <article class="card" id="card-products">
+      <header>
+        <span class="eyebrow">Outcomes</span>
+        <h2>Relief rate by product</h2>
+        <p class="sub">Share of complaints the company closed with monetary or non-monetary relief. Select a product to filter the whole page.</p>
+      </header>
+      <div class="rows" id="products"></div>
+      <details><summary>View as table</summary><div class="tablewrap" id="products-table"></div></details>
+    </article>
+
+    <article class="card" id="card-themes">
+      <header>
+        <span class="eyebrow">AI themes · topic model</span>
+        <h2>What consumers complain about, and how often it pays off</h2>
+        <p class="sub">16 themes learned from the narratives. Expected rates apply each product's average relief rate to the theme's product mix, so the gap shows the theme's own effect.</p>
+      </header>
+      <div class="legend"><span><i class="key-dot"></i>Actual, above expected</span><span><i class="key-dot neg"></i>Actual, below expected</span><span><i class="key-ring"></i>Expected from product mix</span></div>
+      <div class="rows" id="themes"></div>
+      <details><summary>View as table</summary><div class="tablewrap" id="themes-table"></div></details>
+    </article>
+
+    <article class="card" id="card-language">
+      <header>
+        <span class="eyebrow">Language signals · NLP</span>
+        <h2>Does the way a complaint is written change the outcome?</h2>
+        <p class="sub">Relief rate for complaints with each signal minus the rate expected for the same product mix, in percentage points.</p>
+      </header>
+      <div class="legend"><span><i class="key-bar"></i>More relief than expected</span><span><i class="key-bar neg"></i>Less relief than expected</span></div>
+      <div class="rows" id="language"></div>
+      <details><summary>View as table</summary><div class="tablewrap" id="language-table"></div></details>
+    </article>
+
+    <article class="card" id="card-texas">
+      <header>
+        <span class="eyebrow">Texas spotlight</span>
+        <h2>Texas complaints compared with the rest of the U.S.</h2>
+        <p class="sub" id="texas-sub"></p>
+      </header>
+      <div class="legend"><span><i class="key-dot"></i>Texas relief rate</span><span><i class="key-ring"></i>Rest of U.S. relief rate</span></div>
+      <div class="rows" id="texas"></div>
+      <details><summary>View as table</summary><div class="tablewrap" id="texas-table"></div></details>
+    </article>
+
+    <article class="card wide" id="card-companies">
+      <header>
+        <span class="eyebrow">Benchmark</span>
+        <h2>The 15 most-complained-about companies</h2>
+        <p class="sub">Relief rates differ sharply between companies that handle the same kind of complaint. "vs. expected" adjusts for each company's product mix.</p>
+      </header>
+      <div class="tablewrap" id="companies"></div>
+    </article>
+  </section>
+
+  <section class="section-head" aria-labelledby="models-title">
+    <span class="eyebrow">Machine learning triage · hold-out test set, all U.S.</span>
+    <h2 id="models-title">Can a model take the first pass?</h2>
+    <p>Two models trained on 80% of complaints and tested on the other 20%. Copies of the same text were kept on one side of the split, so the scores reflect complaints the models had never seen.</p>
+  </section>
+
+  <section class="model-grid">
+    <article class="card">
+      <header>
+        <span class="eyebrow">Model A · text classifier</span>
+        <h2>Route each complaint to the right product team</h2>
+        <p class="sub">TF-IDF word and phrase features with multinomial logistic regression, reading only the consumer's narrative.</p>
+      </header>
+      <div class="stats" id="routing-stats"></div>
+      <div id="routing-curve"></div>
+      <p class="note">Each point is a confidence threshold: complaints above it are routed automatically and the rest go to a person.</p>
+      <div>
+        <h3 class="eyebrow" style="margin-bottom:6px">Most common mix-ups</h3>
+        <ul class="confusions" id="confusions"></ul>
+      </div>
+      <details><summary>Per-product scores</summary><div class="tablewrap" id="routing-table"></div></details>
+    </article>
+
+    <article class="card">
+      <header>
+        <span class="eyebrow">Model B · relief likelihood</span>
+        <h2>Flag the complaints most likely to end in relief</h2>
+        <p class="sub">Logistic regression using only what is known at intake: product, issue, company, state, consumer tags and the narrative text.</p>
+      </header>
+      <div class="stats" id="relief-stats"></div>
+      <div id="gains-curve"></div>
+      <div class="phrases" id="phrases"></div>
+      <p class="note">Phrases compare the relief rate when a phrase appears with the rate expected for the same product mix. Only phrases in 400+ complaints; company names and form-letter text are excluded.</p>
+      <details><summary>Model comparison and deciles</summary><div class="tablewrap" id="relief-table"></div></details>
+    </article>
+  </section>
+
+  <section class="grid">
+    <article class="card wide" id="card-voices">
+      <header>
+        <span class="eyebrow">Voice of the consumer</span>
+        <h2>What each theme sounds like</h2>
+        <p class="sub">Short narratives that score highest on each theme. The CFPB replaces names, dates and account numbers with XXXX before publishing; those masks appear as black bars.</p>
+      </header>
+      <div class="theme-picker" id="theme-picker" role="group" aria-label="Choose a theme"></div>
+      <p class="terms" id="theme-terms"></p>
+      <div class="excerpts" id="excerpts"></div>
+    </article>
+  </section>
+
+  <section class="section-head" aria-labelledby="methods-title">
+    <span class="eyebrow">Methods and limits</span>
+    <h2 id="methods-title">How this was built</h2>
+  </section>
+  <section class="methods">
+    <div>
+      <h3>Data</h3>
+      <ul id="methods-data"></ul>
+    </div>
+    <div>
+      <h3>Pipeline</h3>
+      <ul>
+        <li>Python and pandas clean the text and engineer intake-time features; SQL (SQLite) produces the benchmark tables.</li>
+        <li>Themes: TF-IDF on unique narratives plus non-negative matrix factorization (18 topics merged into 16 themes).</li>
+        <li>Tone: VADER sentiment, scored sentence by sentence.</li>
+        <li>Models: scikit-learn logistic regression, evaluated on a 20% hold-out split grouped by narrative text.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Read with care</h3>
+      <ul>
+        <li>Outcomes are reported by the companies themselves, so some gaps reflect how a company labels its responses.</li>
+        <li>Narratives are published only when consumers consent, so this is not every complaint filed.</li>
+        <li>Gaps are associations, not causes. "Expected" adjusts for product mix only.</li>
+        <li>Rates for small slices (marked †, under 100 complaints) are noisy; slices under 30 are hidden.</li>
+      </ul>
+    </div>
+  </section>
+  <p class="byline"><span>Project by Emmanuel Jibiri, Data Analyst, Houston, TX</span><a href="https://www.linkedin.com/in/ejibiri/" target="_blank" rel="noopener">LinkedIn</a><a href="https://emmanueljibiri.com/" target="_blank" rel="noopener">Portfolio</a></p>
+</div>
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+const D = /*__DATA__*/null;
+
+/* ---------- decode the packed complaint records (5 bytes each) ---------- */
+const N = D.meta.n;
+const raw = Uint8Array.from(atob(D.packed), c => c.charCodeAt(0));
+const PR = new Uint8Array(N), GE = new Uint8Array(N), RE = new Uint8Array(N), MO$ = new Uint8Array(N),
+      TH = new Uint8Array(N), TQ = new Uint8Array(N), CO = new Uint8Array(N), MN = new Uint8Array(N),
+      SG = new Uint8Array(N), TI = new Uint8Array(N), DU = new Uint8Array(N);
+for (let i = 0; i < N; i++) {
+  const o = i * 5, b0 = raw[o], b1 = raw[o + 1], b2 = raw[o + 2], b3 = raw[o + 3], b4 = raw[o + 4];
+  PR[i] = b0 & 15; GE[i] = (b0 >> 4) & 3; RE[i] = (b0 >> 6) & 1; MO$[i] = (b0 >> 7) & 1;
+  TH[i] = b1 & 31; TQ[i] = (b1 >> 5) & 7;
+  CO[i] = b2 & 15; MN[i] = (b2 >> 4) & 15;
+  SG[i] = b3 & 63; TI[i] = (b3 >> 6) & 1;
+  DU[i] = (b4 >> 4) & 1;
+}
+const dims = D.dims;
+const NP = dims.product.length, NT = dims.theme.length, NC = dims.company.length, NM = dims.month.length;
+const SIGNALS = dims.signal.concat(["Most negative tone (bottom 20%)", "Least negative tone (top 20%)"]);
+const NS = SIGNALS.length;
+const completeMonths = dims.month.map((m, i) => [m, i]).filter(([m]) => m >= D.meta.complete_months[0] && m <= D.meta.complete_months[1]);
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const fmtInt = n => n.toLocaleString("en-US");
+const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
+const pts = x => (x >= 0 ? "+" : "−") + Math.abs(x * 100).toFixed(1) + " pts";
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const zeros = n => new Float64Array(n);
+const grid2 = (a, b) => Array.from({ length: a }, () => new Float64Array(b));
+const MIN_SHOW = 30, MIN_SOLID = 100;
+const niceMax = (v, step) => Math.max(step, Math.ceil(v / step) * step);
+
+/* ---------- tooltip ---------- */
+const tip = $("tip");
+const tipData = new WeakMap();
+function setTip(node, title, lines) { tipData.set(node, { title, lines }); node.setAttribute("data-tip", ""); }
+function showTip(node, x, y) {
+  const d = tipData.get(node); if (!d) return;
+  const kids = [];
+  if (d.title) kids.push(el("p", "t-title", d.title));
+  d.lines.forEach(([v, l]) => { const row = el("div"); row.append(el("strong", null, v), el("span", null, l)); kids.push(row); });
+  tip.replaceChildren(...kids);
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > window.innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > window.innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = Math.max(8, top) + "px";
+}
+document.addEventListener("pointermove", e => {
+  const node = e.target.closest && e.target.closest("[data-tip]");
+  if (node) showTip(node, e.clientX, e.clientY); else if (!tip.hidden && !document.activeElement?.hasAttribute?.("data-tip")) tip.hidden = true;
+});
+document.addEventListener("focusin", e => {
+  const node = e.target.closest && e.target.closest("[data-tip]");
+  if (node) { const r = node.getBoundingClientRect(); showTip(node, r.left + Math.min(r.width, 240), r.top); }
+});
+document.addEventListener("focusout", () => { tip.hidden = true; });
+document.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+
+/* ---------- state ---------- */
+const state = { geo: "all", product: -1, theme: 0 };
+const inGeo = i => state.geo === "all" || (state.geo === "tx" ? GE[i] >= 1 : GE[i] === 2);
+
+/* ---------- one pass aggregation over the current slice ---------- */
+function aggregate() {
+  const A = {
+    n: 0, r: 0, m: 0, t: 0, dup: 0, month: zeros(NM),
+    prodN: zeros(NP), prodR: zeros(NP), prodM: zeros(NP),              // geo only (product chart)
+    nP: zeros(NP), rP: zeros(NP),                                       // scoped product totals
+    thN: grid2(NT, NP), thR: grid2(NT, NP), thM: zeros(NT),
+    sgN: grid2(NS, NP), sgR: grid2(NS, NP),
+    coN: grid2(NC, NP), coR: grid2(NC, NP), coM: zeros(NC), coT: zeros(NC),
+  };
+  const prodSel = state.product;
+  for (let i = 0; i < N; i++) {
+    if (!inGeo(i)) continue;
+    const p = PR[i], r = RE[i];
+    A.prodN[p]++; A.prodR[p] += r; A.prodM[p] += MO$[i];
+    if (prodSel >= 0 && p !== prodSel) continue;
+    A.n++; A.r += r; A.m += MO$[i]; A.t += TI[i]; A.dup += DU[i]; A.month[MN[i]]++;
+    A.nP[p]++; A.rP[p] += r;
+    const t = TH[i]; A.thN[t][p]++; A.thR[t][p] += r; A.thM[t] += MO$[i];
+    const s = SG[i];
+    for (let k = 0; k < 6; k++) if ((s >> k) & 1) { A.sgN[k][p]++; A.sgR[k][p] += r; }
+    if (TQ[i] === 0) { A.sgN[6][p]++; A.sgR[6][p] += r; }
+    if (TQ[i] === 4) { A.sgN[7][p]++; A.sgR[7][p] += r; }
+    const c = CO[i]; A.coN[c][p]++; A.coR[c][p] += r; A.coM[c] += MO$[i]; A.coT[c] += TI[i];
+  }
+  return A;
+}
+
+/* Group statistics with a product-mix expectation: each product's relief rate among
+   complaints OUTSIDE the group, weighted by the group's own product mix. */
+function groupStats(nRow, rRow, A) {
+  let n = 0, r = 0, num = 0;
+  for (let p = 0; p < NP; p++) {
+    const ng = nRow[p]; if (!ng) continue;
+    n += ng; r += rRow[p];
+    const nb = A.nP[p] - ng, rb = A.rP[p] - rRow[p];
+    num += ng * (nb > 0 ? rb / nb : A.rP[p] / A.nP[p]);
+  }
+  return { n, rate: n ? r / n : NaN, expected: n ? num / n : NaN };
+}
+
+/* ---------- national reference values (for KPI comparisons) ---------- */
+let NAT = null;
+
+/* ---------- renderers ---------- */
+function sparkline(values) {
+  const w = 200, h = 28, max = Math.max(...values), min = Math.min(...values);
+  const span = max - min || 1;
+  const xs = values.map((_, i) => (i / (values.length - 1)) * (w - 6) + 3);
+  const ys = values.map(v => h - 4 - ((v - min) / span) * (h - 8));
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`); svg.setAttribute("class", "spark chart"); svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(svgNS, "path");
+  path.setAttribute("d", xs.map((x, i) => (i ? "L" : "M") + x.toFixed(1) + " " + ys[i].toFixed(1)).join(" "));
+  path.setAttribute("class", "line"); path.setAttribute("vector-effect", "non-scaling-stroke");
+  svg.append(path);
+  return svg;
+}
+
+function renderKPIs(A) {
+  const filtered = state.geo !== "all" || state.product >= 0;
+  const cmp = (v, nat, f) => filtered ? `U.S., all products: ${f(nat)}` : "All U.S., all products";
+  const tiles = [
+    { label: "Complaints", value: fmtInt(A.n), compare: filtered ? `${pct(A.n / N)} of all ${fmtInt(N)}` : "Received Jan 2019 to Jan 2020", spark: completeMonths.map(([, i]) => A.month[i]) },
+    { label: "Closed with relief", value: pct(A.r / A.n), compare: cmp(A.r / A.n, NAT.r / NAT.n, pct) },
+    { label: "Monetary relief", value: pct(A.m / A.n), compare: cmp(A.m / A.n, NAT.m / NAT.n, pct) },
+    { label: "Timely company response", value: pct(A.t / A.n), compare: cmp(A.t / A.n, NAT.t / NAT.n, pct) },
+    { label: "Copy-paste template text", value: pct(A.dup / A.n), compare: filtered ? `U.S., all products: ${pct(NAT.dup / NAT.n)}` : "Same narrative filed 2+ times" },
+  ];
+  $("kpis").replaceChildren(...tiles.map(t => {
+    const d = el("div", "tile");
+    d.append(el("span", "label", t.label), el("span", "value", A.n ? t.value : "–"), el("span", "compare", t.compare));
+    if (t.spark && A.n) { d.append(sparkline(t.spark)); d.append(el("span", "compare", "Monthly volume, Jan–Oct 2019")); }
+    return d;
+  }));
+  const geoName = { all: "All U.S.", tx: "Texas", hou: "Greater Houston (ZIP 770–775)" }[state.geo];
+  const prodName = state.product >= 0 ? dims.product[state.product] : "all products";
+  $("scope").textContent = `${geoName} · ${prodName} · ${fmtInt(A.n)} complaints`;
+}
+
+function axisRow(max, step, fmt) {
+  const row = el("div", "axis-row"); row.setAttribute("aria-hidden", "true");
+  row.append(el("span"));
+  const ax = el("div", "axis");
+  for (let v = 0; v <= max + 1e-9; v += step) { const s = el("span", null, fmt(v)); s.style.left = (v / max * 100) + "%"; ax.append(s); }
+  row.append(ax, el("span"));
+  return row;
+}
+
+function table(headers, rows) {
+  const t = el("table"), thead = el("thead"), tr = el("tr");
+  headers.forEach(h => tr.append(el("th", null, h))); thead.append(tr); t.append(thead);
+  const tb = el("tbody");
+  rows.forEach(r => { const row = el("tr"); r.forEach(c => row.append(el("td", null, c))); tb.append(row); });
+  t.append(tb); return t;
+}
+
+function renderProducts(A) {
+  const rows = dims.product.map((p, i) => ({ i, p, n: A.prodN[i], rate: A.prodN[i] ? A.prodR[i] / A.prodN[i] : 0, m: A.prodN[i] ? A.prodM[i] / A.prodN[i] : 0 }))
+    .sort((a, b) => b.rate - a.rate);
+  const max = niceMax(Math.max(...rows.filter(r => r.n >= MIN_SHOW).map(r => r.rate), 0.3), 0.1);
+  const box = $("products");
+  const out = [axisRow(max, 0.1, v => pct(v, 0))];
+  rows.forEach(r => {
+    const b = el("button", "row"); b.type = "button";
+    b.setAttribute("aria-pressed", String(state.product === r.i));
+    const lbl = el("span", "lbl", r.p); lbl.append(el("small", null, fmtInt(r.n) + " complaints" + (r.n < MIN_SOLID && r.n >= MIN_SHOW ? " †" : "")));
+    const track = el("span", "track"); track.style.setProperty("--tick", (0.1 / max * 100) + "%");
+    if (r.n >= MIN_SHOW) {
+      const bar = el("span", "bar" + (state.product >= 0 && state.product !== r.i ? " context" : ""));
+      bar.style.width = (r.rate / max * 100) + "%"; track.append(bar);
+    } else track.append(el("span", "toofew", "too few"));
+    b.append(lbl, track, el("span", "val" + (r.n < MIN_SHOW ? " dim" : ""), r.n >= MIN_SHOW ? pct(r.rate) : "–"));
+    setTip(b, r.p, [[r.n >= MIN_SHOW ? pct(r.rate) : "–", "closed with relief"], [pct(r.m), "monetary relief"], [fmtInt(r.n), "complaints"]]);
+    b.addEventListener("click", () => { state.product = state.product === r.i ? -1 : r.i; $("product").value = String(state.product); update(); });
+    out.push(b);
+  });
+  box.replaceChildren(...out);
+  $("products-table").replaceChildren(table(["Product", "Complaints", "Relief", "Monetary relief"],
+    rows.map(r => [r.p, fmtInt(r.n), r.n ? pct(r.rate) : "–", r.n ? pct(r.m) : "–"])));
+}
+
+function dumbbellRow(label, sub, actual, expected, n, max, fixed, extraVal) {
+  const row = el("div", "row"); row.tabIndex = 0;
+  const lbl = el("span", "lbl", label); lbl.append(el("small", null, sub + (n < MIN_SOLID && n >= MIN_SHOW ? " †" : "")));
+  const track = el("span", "track"); track.style.setProperty("--tick", (0.1 / max * 100) + "%");
+  let valText = "–";
+  if (n >= MIN_SHOW) {
+    const lo = Math.min(actual, expected), hi = Math.max(actual, expected), up = actual >= expected;
+    const seg = el("span", "seg-line" + (fixed ? " neutral" : up ? "" : " neg")); seg.style.left = (lo / max * 100) + "%"; seg.style.width = ((hi - lo) / max * 100) + "%";
+    const ring = el("span", "ring"); ring.style.left = (expected / max * 100) + "%";
+    const dot = el("span", "dot" + (fixed || up ? "" : " neg")); dot.style.left = (actual / max * 100) + "%";
+    track.append(seg, ring, dot);
+    valText = extraVal != null ? extraVal : pts(actual - expected);
+  } else track.append(el("span", "toofew", "too few"));
+  row.append(lbl, track, el("span", "val" + (n < MIN_SHOW ? " dim" : ""), valText));
+  return row;
+}
+
+function renderThemes(A) {
+  const rows = dims.theme.map((t, i) => ({ i, t, ...groupStats(A.thN[i], A.thR[i], A), m: A.thM[i] }))
+    .filter(r => r.t !== "Too short to classify");
+  const shown = rows.filter(r => r.n >= MIN_SHOW);
+  shown.sort((a, b) => (b.rate - b.expected) - (a.rate - a.expected));
+  const hidden = rows.filter(r => r.n < MIN_SHOW);
+  const max = niceMax(Math.max(0.3, ...shown.map(r => Math.max(r.rate, r.expected))), 0.1);
+  const out = [axisRow(max, 0.1, v => pct(v, 0))];
+  shown.concat(hidden).forEach(r => {
+    const row = dumbbellRow(r.t, fmtInt(r.n) + " complaints", r.rate, r.expected, r.n, max);
+    setTip(row, r.t, [[pct(r.rate), "actual relief"], [pct(r.expected), "expected from product mix"], [r.n >= MIN_SHOW ? pts(r.rate - r.expected) : "–", "gap"], [fmtInt(r.n), "complaints"]]);
+    out.push(row);
+  });
+  $("themes").replaceChildren(...out);
+  $("themes-table").replaceChildren(table(["Theme", "Complaints", "Relief", "Expected", "Gap", "Monetary"],
+    shown.concat(hidden).map(r => [r.t, fmtInt(r.n), r.n ? pct(r.rate) : "–", r.n ? pct(r.expected) : "–", r.n >= MIN_SHOW ? pts(r.rate - r.expected) : "–", r.n ? pct(r.m / r.n) : "–"])));
+}
+
+function renderLanguage(A) {
+  const rows = SIGNALS.map((s, k) => ({ s, k, ...groupStats(A.sgN[k], A.sgR[k], A) }));
+  rows.forEach(r => r.gap = r.rate - r.expected);
+  const shown = rows.filter(r => r.n >= MIN_SHOW).sort((a, b) => b.gap - a.gap);
+  const hidden = rows.filter(r => r.n < MIN_SHOW);
+  const lim = niceMax(Math.max(0.06, ...shown.map(r => Math.abs(r.gap))), 0.02);
+  const head = el("div", "axis-row"); head.setAttribute("aria-hidden", "true"); head.append(el("span"));
+  const ax = el("div", "axis");
+  [-lim, -lim / 2, 0, lim / 2, lim].forEach(v => { const s = el("span", null, v === 0 ? "0" : (v > 0 ? "+" : "−") + Math.abs(v * 100).toFixed(0)); s.style.left = ((v + lim) / (2 * lim) * 100) + "%"; ax.append(s); });
+  head.append(ax, el("span")); const out = [head];
+  shown.concat(hidden).forEach(r => {
+    const row = el("div", "row"); row.tabIndex = 0;
+    const lbl = el("span", "lbl", r.s); lbl.append(el("small", null, fmtInt(r.n) + " complaints · " + (A.n ? pct(r.n / A.n) : "–") + (r.n < MIN_SOLID && r.n >= MIN_SHOW ? " †" : "")));
+    const track = el("span", "track div"); track.style.setProperty("--tick", "25%");
+    const zero = el("span", "zero"); zero.style.left = "50%"; track.append(zero);
+    if (r.n >= MIN_SHOW) {
+      const w = Math.abs(r.gap) / (2 * lim) * 100;
+      const bar = el("span", "bar" + (r.gap < 0 ? " neg" : ""));
+      bar.style.width = w + "%"; bar.style.left = (r.gap < 0 ? 50 - w : 50) + "%";
+      track.append(bar);
+    } else track.append(el("span", "toofew", "too few"));
+    row.append(lbl, track, el("span", "val" + (r.n < MIN_SHOW ? " dim" : ""), r.n >= MIN_SHOW ? pts(r.gap) : "–"));
+    setTip(row, r.s, [[r.n >= MIN_SHOW ? pts(r.gap) : "–", "vs. expected"], [pct(r.rate), "actual relief"], [pct(r.expected), "expected from product mix"], [fmtInt(r.n), "complaints"]]);
+    out.push(row);
+  });
+  $("language").replaceChildren(...out);
+  $("language-table").replaceChildren(table(["Signal", "Complaints", "Relief", "Expected", "Gap"],
+    shown.concat(hidden).map(r => [r.s, fmtInt(r.n), r.n ? pct(r.rate) : "–", r.n ? pct(r.expected) : "–", r.n >= MIN_SHOW ? pts(r.gap) : "–"])));
+}
+
+function renderCompanies(A) {
+  const rows = dims.company.map((c, i) => ({ c, i, name: dims.company_display[i], ...groupStats(A.coN[i], A.coR[i], A), m: A.coM[i], t: A.coT[i] }));
+  const other = rows.pop();
+  rows.sort((a, b) => b.n - a.n);
+  rows.push(other);
+  const max = niceMax(Math.max(0.2, ...rows.filter(r => r.n >= MIN_SHOW).map(r => r.rate)), 0.1);
+  const t = el("table"), thead = el("thead"), hr = el("tr");
+  ["Company", "Complaints", "Relief rate", "vs. expected", "Monetary", "Timely"].forEach(h => hr.append(el("th", null, h)));
+  thead.append(hr); t.append(thead);
+  const tb = el("tbody");
+  rows.forEach(r => {
+    const tr = el("tr");
+    const name = el("td", null, r.c === "All other companies" ? `${r.name} (${fmtInt(dims.other_company_count)} companies)` : r.name);
+    const ok = r.n >= MIN_SHOW;
+    const rel = el("td");
+    if (ok) { const tr_ = el("span", "minitrack"); const fill = el("i"); fill.style.width = (r.rate / max * 100) + "%"; tr_.append(fill); rel.append(tr_, document.createTextNode(pct(r.rate))); }
+    else rel.textContent = r.n ? "too few" : "–";
+    const gap = el("td", ok ? (r.rate >= r.expected ? "gap-pos" : "gap-neg") : null, ok ? pts(r.rate - r.expected) : "–");
+    tr.append(name, el("td", null, fmtInt(r.n) + (r.n < MIN_SOLID && ok ? " †" : "")), rel, gap, el("td", null, ok ? pct(r.m / r.n) : "–"), el("td", null, ok ? pct(r.t / r.n) : "–"));
+    tb.append(tr);
+  });
+  t.append(tb);
+  $("companies").replaceChildren(t);
+}
+
+/* ---------- static: Texas spotlight (all products, all U.S. split) ---------- */
+function renderTexas() {
+  const n = [zeros(NP), zeros(NP)], r = [zeros(NP), zeros(NP)];
+  for (let i = 0; i < N; i++) { const g = GE[i] >= 1 ? 1 : 0; n[g][PR[i]]++; r[g][PR[i]] += RE[i]; }
+  const txTotal = n[1].reduce((a, b) => a + b, 0), restTotal = n[0].reduce((a, b) => a + b, 0);
+  const txRel = r[1].reduce((a, b) => a + b, 0) / txTotal, restRel = r[0].reduce((a, b) => a + b, 0) / restTotal;
+  let hou = 0; for (let i = 0; i < N; i++) if (GE[i] === 2) hou++;
+  $("texas-sub").textContent = `Texas filed ${fmtInt(txTotal)} complaints (${fmtInt(hou)} from Greater Houston). ${pct(txRel)} ended in relief, against ${pct(restRel)} in the rest of the U.S. Part of that gap is mix: debt collection, a low-relief product, makes up a bigger share of Texas complaints.`;
+  const rows = dims.product.map((p, i) => ({ p, nt: n[1][i], nr: n[0][i], rt: r[1][i] / n[1][i], rr: r[0][i] / n[0][i], mt: n[1][i] / txTotal, mr: n[0][i] / restTotal }))
+    .sort((a, b) => b.nt - a.nt);
+  const max = niceMax(Math.max(...rows.map(x => Math.max(x.rt, x.rr))), 0.1);
+  const out = [axisRow(max, 0.1, v => pct(v, 0))];
+  rows.forEach(x => {
+    const row = dumbbellRow(x.p, `${fmtInt(x.nt)} Texas complaints · ${pct(x.mt)} of Texas vs ${pct(x.mr)} elsewhere`, x.rt, x.rr, x.nt, max, true, pct(x.rt));
+    setTip(row, x.p, [[pct(x.rt), "Texas relief"], [pct(x.rr), "rest of U.S. relief"], [pct(x.mt), "share of Texas complaints"], [pct(x.mr), "share elsewhere"]]);
+    out.push(row);
+  });
+  $("texas").replaceChildren(...out);
+  $("texas-table").replaceChildren(table(["Product", "Texas complaints", "Texas relief", "Rest of U.S. relief", "Texas mix", "Rest of U.S. mix"],
+    rows.map(x => [x.p, fmtInt(x.nt), pct(x.rt), pct(x.rr), pct(x.mt), pct(x.mr)])));
+}
+
+/* ---------- static: models ---------- */
+const svgNS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, text) { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; return e; }
+
+function lineChart({ points, xLabel, yLabel, xFmt, yFmt, yMin = 0, yMax = 1, ref, mark, tipFor, ariaLabel }) {
+  const W = 520, H = 250, m = { l: 46, r: 16, t: 12, b: 40 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const X = v => m.l + v * pw, Y = v => m.t + (1 - (v - yMin) / (yMax - yMin)) * ph;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "img", "aria-label": ariaLabel });
+  for (let k = 0; k <= 4; k++) {
+    const yv = yMin + (yMax - yMin) * k / 4;
+    svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: Y(yv), y2: Y(yv), class: "gridline" }));
+    svg.append(svgEl("text", { x: m.l - 8, y: Y(yv) + 4, "text-anchor": "end", class: "tick" }, yFmt(yv)));
+  }
+  for (let k = 0; k <= 4; k++) {
+    const xv = k / 4;
+    svg.append(svgEl("text", { x: X(xv), y: H - m.b + 18, "text-anchor": k === 0 ? "start" : k === 4 ? "end" : "middle", class: "tick" }, xFmt(xv)));
+  }
+  svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: Y(yMin), y2: Y(yMin), class: "axisline" }));
+  svg.append(svgEl("text", { x: m.l + pw / 2, y: H - 4, "text-anchor": "middle", class: "lbl2" }, xLabel));
+  svg.append(svgEl("text", { x: 12, y: m.t + ph / 2, "text-anchor": "middle", class: "lbl2", transform: `rotate(-90 12 ${m.t + ph / 2})` }, yLabel));
+  if (ref) svg.append(svgEl("path", { d: ref.map((p, i) => (i ? "L" : "M") + X(p[0]) + " " + Y(p[1])).join(" "), class: "ref" }));
+  const d = points.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+  svg.append(svgEl("path", { d: d + ` L${X(points[points.length - 1][0]).toFixed(1)} ${Y(yMin)} L${X(points[0][0]).toFixed(1)} ${Y(yMin)} Z`, class: "area" }));
+  svg.append(svgEl("path", { d, class: "line" }));
+  if (mark) {
+    const [lx, ly] = mark.labelAt;
+    const end = mark.anchor === "end";
+    svg.append(svgEl("line", { x1: X(lx) + (end ? 4 : 6), y1: Y(ly) + (end ? -4 : 5), x2: X(mark.x), y2: Y(mark.y), class: "cross" }));
+    svg.append(svgEl("circle", { cx: X(mark.x), cy: Y(mark.y), r: 5, class: "mark" }));
+    svg.append(svgEl("text", { x: X(lx), y: Y(ly), "text-anchor": mark.anchor || "start", class: "lbl" }, mark.label));
+  }
+  const cross = svgEl("line", { x1: 0, x2: 0, y1: m.t, y2: m.t + ph, class: "cross", visibility: "hidden" });
+  const hl = svgEl("circle", { cx: 0, cy: 0, r: 4, class: "mark", visibility: "hidden" });
+  svg.append(cross, hl);
+  const hit = svgEl("rect", { x: m.l, y: m.t, width: pw, height: ph, class: "hit" });
+  svg.append(hit);
+  hit.addEventListener("pointermove", e => {
+    const r = svg.getBoundingClientRect();
+    const xv = ((e.clientX - r.left) / r.width * W - m.l) / pw;
+    let best = 0; points.forEach((p, i) => { if (Math.abs(p[0] - xv) < Math.abs(points[best][0] - xv)) best = i; });
+    const p = points[best];
+    cross.setAttribute("x1", X(p[0])); cross.setAttribute("x2", X(p[0])); cross.setAttribute("visibility", "visible");
+    hl.setAttribute("cx", X(p[0])); hl.setAttribute("cy", Y(p[1])); hl.setAttribute("visibility", "visible");
+    tipData.set(hit, tipFor(best)); hit.setAttribute("data-tip", "");
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hl.setAttribute("visibility", "hidden"); });
+  return svg;
+}
+
+function stat(value, label) { const d = el("div", "stat"); d.append(el("b", null, value), el("span", null, label)); return d; }
+
+function renderModels() {
+  const R = D.models.routing, B = D.models.relief;
+  $("routing-stats").replaceChildren(
+    stat(pct(R.accuracy), `accuracy on ${fmtInt(R.n_test)} unseen complaints`),
+    stat(R.macro_f1.toFixed(2), "macro F1 across 9 products"),
+    stat(pct(R.at95.coverage, 0), `auto-routed at ${pct(R.at95.accuracy, 0)} accuracy`));
+  const auto = R.automation.slice().sort((a, b) => a.coverage - b.coverage);
+  const yMin = 1 - 4 * Math.ceil((1 - Math.min(...auto.map(a => a.accuracy_on_auto_routed))) / 4 * 100) / 100;
+  $("routing-curve").replaceChildren(lineChart({
+    points: auto.map(a => [a.coverage, a.accuracy_on_auto_routed]),
+    xLabel: "Share of complaints routed automatically", yLabel: "Accuracy", xFmt: v => pct(v, 0), yFmt: v => pct(v, 0),
+    yMin, yMax: 1, ariaLabel: `Routing accuracy versus share of complaints routed automatically. ${pct(R.at95.coverage, 0)} can be routed at ${pct(R.at95.accuracy, 0)} accuracy.`,
+    mark: { x: R.at95.coverage, y: R.at95.accuracy, label: `${pct(R.at95.coverage, 0)} routed at ${pct(R.at95.accuracy, 0)} accuracy`, labelAt: [0.66, yMin + (1 - yMin) * 0.37], anchor: "end" },
+    tipFor: i => ({ title: `Confidence ≥ ${auto[i].threshold.toFixed(2)}`, lines: [[pct(auto[i].coverage), "routed automatically"], [pct(auto[i].accuracy_on_auto_routed), "accuracy"]] }),
+  }));
+  $("confusions").replaceChildren(...R.confusions.map(c => {
+    const li = el("li"); li.append(el("b", null, pct(c.share)), document.createTextNode(` of ${c.actual} complaints were routed to ${c.predicted}`)); return li;
+  }));
+  $("routing-table").replaceChildren(table(["Product", "Precision", "Recall", "F1", "Test complaints"],
+    R.per_class.slice().sort((a, b) => b.support - a.support).map(p => [p.product, pct(p.precision), pct(p.recall), p.f1.toFixed(2), fmtInt(p.support)])));
+
+  const comb = B.comparison.find(c => c.model.startsWith("Combined"));
+  const struct = B.comparison.find(c => c.model.startsWith("Structured"));
+  $("relief-stats").replaceChildren(
+    stat(comb.roc_auc.toFixed(2), `ROC AUC (structured fields alone: ${struct.roc_auc.toFixed(2)})`),
+    stat(pct(comb.capture_top20_pct, 0), "of relief cases sit in the top 20% of the queue"),
+    stat(comb.lift_top10.toFixed(1) + "×", `lift in the top 10% (${pct(comb.precision_top10_pct, 0)} get relief)`));
+  const pts_ = [[0, 0]].concat(B.deciles.map(d => [d.decile / 10, d.cumulative_capture]));
+  const top20 = B.deciles.find(d => d.decile === 2).cumulative_capture;
+  $("gains-curve").replaceChildren(lineChart({
+    points: pts_, ref: [[0, 0], [1, 1]],
+    xLabel: "Complaints reviewed, highest score first", yLabel: "Relief cases found", xFmt: v => pct(v, 0), yFmt: v => pct(v, 0),
+    ariaLabel: `Cumulative gains: reviewing the top 20% of complaints by score finds ${pct(top20, 0)} of relief cases.`,
+    mark: { x: 0.2, y: top20, label: `Top 20% finds ${pct(top20, 0)} of relief cases`, labelAt: [0.03, 0.93] },
+    tipFor: i => ({ title: i === 0 ? "Start" : `Top ${i * 10}% of queue`, lines: [[pct(pts_[i][1]), "of relief cases found"], [pct(pts_[i][0], 0), "random order would find"]] }),
+  }));
+  const phraseCol = (title, cls, list) => {
+    const col = el("div"), h = el("h3"); h.append(el("i", cls), document.createTextNode(title));
+    const chips = el("div", "chips");
+    list.slice(0, 10).forEach(p => {
+      const c = el("span", "chip", p.phrase); c.tabIndex = 0;
+      setTip(c, `“${p.phrase}”`, [[(p.gap_pts >= 0 ? "+" : "−") + Math.abs(p.gap_pts).toFixed(1) + " pts", "vs. expected relief"], [pct(p.relief_rate), "relief when mentioned"], [fmtInt(p.complaints), "complaints"]]);
+      chips.append(c);
+    });
+    col.append(h, chips); return col;
+  };
+  $("phrases").replaceChildren(
+    phraseCol("Phrases linked to more relief", "key-bar", B.phrases_up),
+    phraseCol("Phrases linked to less relief", "key-bar neg", B.phrases_down));
+  const cmpRows = B.comparison.map(c => [c.model, c.roc_auc.toFixed(3), c.pr_auc.toFixed(3), pct(c.capture_top20_pct), c.lift_top10.toFixed(2) + "×"]);
+  const decRows = B.deciles.map(d => [`Decile ${d.decile}`, fmtInt(d.complaints), pct(d.relief_rate), pct(d.cumulative_capture), d.lift.toFixed(2) + "×"]);
+  $("relief-table").replaceChildren(
+    table(["Model", "ROC AUC", "PR AUC", "Top-20% capture", "Top-10% lift"], cmpRows),
+    el("p", "note", " "),
+    table(["Score decile", "Complaints", "Relief rate", "Cumulative capture", "Lift"], decRows));
+}
+
+/* ---------- static: voice of the consumer ---------- */
+function renderVoicePicker() {
+  const themes = dims.theme.filter(t => D.excerpts[t] && D.excerpts[t].length);
+  $("theme-picker").replaceChildren(...themes.map((t, k) => {
+    const b = el("button", null, t); b.type = "button"; b.setAttribute("aria-pressed", String(k === state.theme));
+    b.addEventListener("click", () => { state.theme = k; renderVoicePicker(); });
+    return b;
+  }));
+  const theme = themes[state.theme];
+  $("theme-terms").textContent = "Top terms: " + (D.theme_terms[theme] || "");
+  $("excerpts").replaceChildren(...D.excerpts[theme].map(x => {
+    const fig = el("figure", "excerpt"); fig.style.margin = "0";
+    const q = el("blockquote");
+    x.text.split(/(X{2,}(?:\/X{2,})*)/).forEach(part => {
+      if (/^X{2,}/.test(part)) { const s = el("span", "redact"); s.setAttribute("role", "img"); s.setAttribute("aria-label", "redacted"); q.append(s); }
+      else if (part) q.append(document.createTextNode(part));
+    });
+    const meta = el("figcaption", "meta mono");
+    meta.append(el("span", null, "Complaint " + x.id), el("span", null, x.product), el("span", "outcome", x.outcome));
+    fig.append(q, meta);
+    return fig;
+  }));
+}
+
+/* ---------- wiring ---------- */
+function update() {
+  const A = aggregate();
+  renderKPIs(A); renderProducts(A); renderThemes(A); renderLanguage(A); renderCompanies(A);
+  document.querySelectorAll("#geo button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.geo === state.geo)));
+}
+
+function init() {
+  const save = { ...state }; state.geo = "all"; state.product = -1;
+  const all = aggregate(); NAT = { n: all.n, r: all.r, m: all.m, t: all.t, dup: all.dup };
+  Object.assign(state, save);
+  const m = D.meta;
+  const src = $("source");
+  [`Source: CFPB Consumer Complaint Database`, `${fmtInt(m.n)} complaints received ${m.date_min} to ${m.date_max}`, `every complaint includes the consumer's own narrative`]
+    .forEach(t => src.append(el("span", null, t)));
+  const md = $("methods-data");
+  [`${fmtInt(m.n)} complaints with published narratives, received ${m.date_min} to ${m.date_max}, from the public extract distributed with Hvitfeldt & Silge's text-analysis textbook.`,
+   `The CFPB stopped publishing new narratives in August 2026, so narrative-level data like this is now archival.`,
+   `Relief = closed with monetary or non-monetary relief. Greater Houston = ZIP prefixes 770–775.`]
+    .forEach(t => md.append(el("li", null, t)));
+  $("findings").replaceChildren(...D.findings.map(f => { const d = el("div", "finding"); d.append(el("h3", null, f.title), el("p", null, f.text)); return d; }));
+  const sel = $("product");
+  dims.product.forEach((p, i) => { const o = el("option", null, p); o.value = String(i); sel.append(o); });
+  sel.addEventListener("change", () => { state.product = Number(sel.value); update(); });
+  document.querySelectorAll("#geo button").forEach(b => b.addEventListener("click", () => { state.geo = b.dataset.geo; update(); }));
+  $("reset").addEventListener("click", () => { state.geo = "all"; state.product = -1; sel.value = "-1"; update(); });
+  renderTexas(); renderModels(); renderVoicePicker(); update();
+}
+init();
+</script>
