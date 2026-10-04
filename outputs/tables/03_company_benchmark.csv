@@ -1,0 +1,17 @@
+company,complaints,share_pct,relief_rate_pct,monetary_relief_pct,timely_pct,main_product
+"TRANSUNION INTERMEDIATE HOLDINGS, INC.",15237,13.0,4.3,0.5,100.0,Credit reporting
+"EQUIFAX, INC.",14607,12.5,25.1,0.0,99.5,Credit reporting
+Experian Information Solutions Inc.,14290,12.2,43.7,0.2,100.0,Credit reporting
+"CITIBANK, N.A.",3359,2.9,22.5,14.7,99.9,Credit card / prepaid
+CAPITAL ONE FINANCIAL CORPORATION,3281,2.8,24.6,12.1,100.0,Credit card / prepaid
+JPMORGAN CHASE & CO.,3104,2.6,26.4,18.1,100.0,Credit card / prepaid
+"BANK OF AMERICA, NATIONAL ASSOCIATION",2830,2.4,34.0,25.6,100.0,Checking / savings
+WELLS FARGO & COMPANY,2821,2.4,23.1,11.4,94.6,Checking / savings
+SYNCHRONY FINANCIAL,2372,2.0,28.7,13.7,100.0,Credit card / prepaid
+"Navient Solutions, LLC.",2057,1.8,2.3,1.0,100.0,Student loan
+AMERICAN EXPRESS COMPANY,1305,1.1,30.3,14.8,100.0,Credit card / prepaid
+Alliance Data Card Services,1159,1.0,42.1,12.8,100.0,Credit card / prepaid
+AES/PHEAA,1155,1.0,22.6,1.4,99.8,Student loan
+PORTFOLIO RECOVERY ASSOCIATES INC,1104,0.9,38.9,0.0,100.0,Debt collection
+U.S. BANCORP,982,0.8,26.2,11.3,100.0,Credit card / prepaid
+All other companies,47551,40.6,9.3,3.6,96.1,Debt collection

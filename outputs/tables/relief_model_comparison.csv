@@ -1,0 +1,4 @@
+model,roc_auc,pr_auc,base_rate,capture_top20_pct,precision_top10_pct,lift_top10
+"Structured fields only (product, issue, company, state, tags)",0.798,0.4559,0.1816,0.4908,0.5383,2.9641
+Narrative text only (TF-IDF),0.7344,0.3763,0.1816,0.4334,0.4521,2.4895
+Combined: structured + narrative text,0.8152,0.4968,0.1816,0.5213,0.5751,3.1668

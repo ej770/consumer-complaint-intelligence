@@ -1,0 +1,6 @@
+tone_quintile,complaints,avg_sentiment,relief_rate,expected_relief_given_products
+1 Most negative,23443,-0.3172,0.1873,0.178
+2,23443,-0.0924,0.1758,0.1738
+3,23442,0.0007,0.1769,0.1782
+4,23443,0.0996,0.1825,0.1877
+5 Least negative,23443,0.3357,0.1969,0.2009

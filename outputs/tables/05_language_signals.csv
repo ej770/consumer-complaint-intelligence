@@ -1,0 +1,7 @@
+signal,complaints_with_signal,share_pct,relief_with_pct,relief_without_pct,expected_pct,mix_adjusted_gap_pts
+Mentions identity theft,11899,10.2,27.9,17.3,18.4,9.5
+Mentions fees or overdraft,10881,9.3,24.1,17.8,16.9,7.2
+"Mentions a regulator (CFPB, AG, FTC, BBB)",10432,8.9,21.0,18.1,18.6,2.5
+"Cites a consumer law (FCRA, FDCPA)",14084,12.0,18.6,18.4,19.1,-0.5
+Mentions an attorney or lawyer,6747,5.8,13.3,18.7,14.7,-1.4
+Mentions suing or court,8156,7.0,13.5,18.8,16.7,-3.2

@@ -1,0 +1,25 @@
+phrase,complaints,relief_rate,expected_relief_given_products,top_company_share,template_share,gap_pts,direction
+free credit,401.0,0.3716,0.2103,0.2993,0.0823,16.1266,more relief than expected
+overdraft fees,552.0,0.3768,0.2459,0.1522,0.0109,13.0925,more relief than expected
+waived,500.0,0.326,0.199,0.088,0.036,12.7035,more relief than expected
+fraudulent charges,767.0,0.3651,0.2401,0.1252,0.0874,12.4939,more relief than expected
+fraud alert,1089.0,0.3324,0.2152,0.2608,0.2369,11.7178,more relief than expected
+police reports,444.0,0.3108,0.2023,0.1959,0.1757,10.8468,more relief than expected
+promotion,847.0,0.3719,0.2638,0.1983,0.0059,10.8079,more relief than expected
+overdrawn,404.0,0.3465,0.2388,0.1609,0.0198,10.7751,more relief than expected
+stop calling,665.0,0.218,0.1126,0.0842,0.0421,10.5449,more relief than expected
+bonus,1008.0,0.3621,0.2665,0.1736,0.0149,9.5572,more relief than expected
+reversed,1126.0,0.3135,0.2189,0.119,0.0133,9.4565,more relief than expected
+pin,642.0,0.3349,0.2405,0.1869,0.0218,9.4391,more relief than expected
+lates,450.0,0.1067,0.2077,0.2733,0.2867,-10.0985,less relief than expected
+bankruptcy court,566.0,0.0936,0.1923,0.2756,0.1219,-9.8703,less relief than expected
+according fcra,441.0,0.1111,0.2013,0.2608,0.2472,-9.0141,less relief than expected
+payment record,404.0,0.1188,0.2041,0.1163,0.1634,-8.5285,less relief than expected
+inaccurate reporting,551.0,0.1234,0.2037,0.2377,0.1978,-8.0322,less relief than expected
+contractual obligation,440.0,0.0909,0.1689,0.1682,0.2318,-7.8039,less relief than expected
+garnished,400.0,0.05,0.123,0.0875,0.055,-7.297,less relief than expected
+verified account,430.0,0.1256,0.1965,0.2233,0.1233,-7.0907,less relief than expected
+auction,421.0,0.0546,0.1252,0.095,0.0736,-7.0541,less relief than expected
+binding,526.0,0.097,0.1674,0.1464,0.251,-7.044,less relief than expected
+furnished,549.0,0.1239,0.1912,0.1566,0.133,-6.7348,less relief than expected
+repossession,481.0,0.0894,0.1563,0.1289,0.1726,-6.6862,less relief than expected
