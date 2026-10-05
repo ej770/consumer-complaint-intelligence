@@ -367,7 +367,7 @@ svg .hit { fill: transparent; }
       <h3>Pipeline</h3>
       <ul>
         <li>Python and pandas clean the text and engineer intake-time features; SQL (SQLite) produces the benchmark tables.</li>
-        <li>Themes: TF-IDF on unique narratives plus non-negative matrix factorization (18 topics merged into 16 themes).</li>
+        <li>Themes: TF-IDF on unique narratives plus seeded non-negative matrix factorization (18 topics, each started from a few anchor terms, grouped into 16 themes).</li>
         <li>Tone: VADER sentiment, scored sentence by sentence.</li>
         <li>Models: scikit-learn logistic regression, evaluated on a 20% hold-out split grouped by narrative text.</li>
       </ul>

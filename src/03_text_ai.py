@@ -1,9 +1,12 @@
 """Step 3 - AI/NLP layer: discover complaint themes and measure tone.
 
-* Topic modeling: TF-IDF (1-2 grams) + Non-negative Matrix Factorization (NMF) learns
-  18 topics from the narratives. Topics are named from their top terms and merged into
-  16 business-friendly themes (three near-identical credit-repair form-letter topics are
-  combined).
+* Topic modeling: TF-IDF (1-2 grams) + seeded Non-negative Matrix Factorization (NMF)
+  learns 18 topics from the narratives, which make up 16 business-friendly themes (three
+  credit-repair form-letter topics share one theme). Each topic starts from a few anchor
+  terms taken from an exploratory, unseeded run; the model then learns the rest of the
+  topic's vocabulary from the narratives. Unseeded NMF can settle on a different set of
+  topics after a change as small as a few rare words in the vocabulary, so seeding keeps
+  the themes the same from run to run and machine to machine.
 * Tone: VADER sentiment is scored sentence by sentence and averaged per complaint.
 
 Outputs
@@ -19,65 +22,76 @@ import re
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
-from sklearn.decomposition import NMF
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import NMF, non_negative_factorization
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, CountVectorizer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 import config as C
+from tfidf import fit_tfidf
 
-N_TOPICS = 18
-
-# Each theme is defined by anchor terms; every learned topic is assigned to the theme whose
-# anchors carry the most weight in that topic. This keeps labels stable even if a different
-# library version returns the topics in another order.
-THEMES = {
-    "Customer service failures": ["customer service", "representative", "email", "spoke"],
-    "Requests to remove report items": ["removed credit", "remove", "items credit", "deleted"],
-    "Credit-repair form letters": ["harming credit", "partial account", "subsection", "reseller",
-                                   "verifiable proof", "consumer contract", "original signed"],
-    "Identity theft": ["identity theft", "victim identity", "theft report", "police report"],
-    "Credit card charges & limits": ["credit card", "card company", "card account", "limit"],
-    "Balances, fees & payoffs": ["account paid", "charged", "owed", "fee"],
-    "Debt not owed / validation": ["collection agency", "debt collection", "collect debt", "owe"],
-    "Unauthorized hard inquiries": ["hard inquiry", "hard inquiries", "inquiries credit"],
-    "Bank deposits, funds & checks": ["checking account", "deposit", "deposited", "funds"],
-    "Late payment reporting": ["late payment", "late payments", "reporting late"],
-    "Collection calls & contact": ["phone calls", "calling", "phone number", "stop"],
-    "Fraudulent accounts (not mine)": ["fraudulent accounts", "accounts belong", "following accounts"],
-    "Loan repayment & forgiveness": ["student loan", "forgiveness", "repayment", "school"],
-    "Dispute & verification process": ["certified", "requested", "documentation", "request"],
-    "Mortgage servicing & escrow": ["escrow", "modification", "foreclosure", "property"],
-    "Inaccurate bureau reporting": ["credit bureaus", "inaccurate", "bankruptcy", "agencies"],
-}
+# One topic per row: (theme, anchor terms). The anchors are distinctive top terms of the topics
+# found by an exploratory, unseeded NMF run. Three topics are different credit-repair form
+# letters, so 18 topics make up 16 themes.
+TOPIC_SEEDS = [
+    ("Customer service failures", ["customer service", "representative", "spoke", "email", "online"]),
+    ("Requests to remove report items", ["removed credit", "remove", "items credit", "deleted"]),
+    ("Credit-repair form letters", ["harming credit", "partial account", "incorrect reporting", "attached credit"]),
+    ("Identity theft", ["identity theft", "victim identity", "theft report", "police report"]),
+    ("Credit card charges & limits", ["credit card", "card company", "card account", "limit"]),
+    ("Credit-repair form letters", ["reporting agency", "subsection", "reseller", "shall"]),
+    ("Balances, fees & payoffs", ["account paid", "paid balance", "charged", "owed", "fee"]),
+    ("Debt not owed / validation", ["collection agency", "debt collection", "collect debt", "owe"]),
+    ("Unauthorized hard inquiries", ["hard inquiry", "hard inquiries", "inquiries credit"]),
+    ("Credit-repair form letters", ["consumer contract", "verifiable proof", "accounts listed", "original signed"]),
+    ("Bank deposits, funds & checks", ["checking account", "deposit", "deposited", "funds"]),
+    ("Late payment reporting", ["late payment", "late payments", "reporting late"]),
+    ("Collection calls & contact", ["phone calls", "calling", "phone number", "stop"]),
+    ("Fraudulent accounts (not mine)", ["fraudulent accounts", "accounts belong", "following accounts"]),
+    ("Loan repayment & forgiveness", ["student loan", "forgiveness", "repayment", "school"]),
+    ("Dispute & verification process", ["certified", "requested", "documentation", "verified"]),
+    ("Mortgage servicing & escrow", ["escrow", "modification", "foreclosure", "property"]),
+    ("Inaccurate bureau reporting", ["credit bureaus", "inaccurate", "bankruptcy", "agencies"]),
+]
 
 
 def fit_topics(df: pd.DataFrame):
-    """Fit TF-IDF + NMF on unique narratives so copy-paste templates do not dominate."""
+    """Fit TF-IDF + seeded NMF on unique narratives so copy-paste templates do not dominate."""
     stop = list(set(ENGLISH_STOP_WORDS) | C.STOP_EXTRA)
-    vec = TfidfVectorizer(stop_words=stop, ngram_range=(1, 2), min_df=25, max_df=0.4,
-                          sublinear_tf=True, max_features=30000,
-                          token_pattern=r"(?u)\b[a-z][a-z]+\b")
     train = df.drop_duplicates("text_group")
     train = train[train["narrative_words"] >= 5]
-    X_train = vec.fit_transform(train["narrative_clean"])
-    nmf = NMF(n_components=N_TOPICS, init="nndsvda", random_state=C.RANDOM_STATE, max_iter=300)
-    nmf.fit(X_train)
-    print(f"Topic model fit on {X_train.shape[0]:,} unique narratives x {X_train.shape[1]:,} terms")
+    vec, X_train = fit_tfidf(train["narrative_clean"], max_features=30000, stop_words=stop,
+                             ngram_range=(1, 2), min_df=25, max_df=0.4,
+                             token_pattern=r"(?u)\b[a-z][a-z]+\b")
+    index = {t: i for i, t in enumerate(vec.get_feature_names_out())}
+    missing = [a for _, anchors in TOPIC_SEEDS for a in anchors if a not in index]
+    if missing:
+        raise ValueError(f"Anchor terms missing from the vocabulary: {missing}")
+
+    # Starting topics: each topic holds only its anchor terms. Starting weights W0 are the best
+    # non-negative fit of every narrative to those starting topics.
+    H0 = np.zeros((len(TOPIC_SEEDS), len(index)))
+    for k, (_, anchors) in enumerate(TOPIC_SEEDS):
+        H0[k, [index[a] for a in anchors]] = 1.0
+    W0, _, _ = non_negative_factorization(X_train, H=H0, n_components=len(TOPIC_SEEDS),
+                                          init="custom", update_H=False, max_iter=200)
+    nmf = NMF(n_components=len(TOPIC_SEEDS), init="custom", max_iter=500)
+    nmf.fit(X_train, W=W0, H=H0)
+    print(f"Topic model fit on {X_train.shape[0]:,} unique narratives x {X_train.shape[1]:,} terms "
+          f"({nmf.n_iter_} iterations)")
     return vec, nmf
 
 
 def label_topics(vec, nmf) -> dict:
+    """Topic k belongs to the theme it was seeded with. Warn if a topic drifted away from its
+    seed (fewer than half of its anchors among its 100 strongest terms)."""
     terms = vec.get_feature_names_out()
-    index = {t: i for i, t in enumerate(terms)}
-    comps = nmf.components_ / nmf.components_.max(axis=1, keepdims=True)
     mapping = {}
-    for k, comp in enumerate(comps):
-        scores = {theme: sum(comp[index[a]] for a in anchors if a in index)
-                  for theme, anchors in THEMES.items()}
-        mapping[k] = max(scores, key=scores.get)
-    missing = set(THEMES) - set(mapping.values())
-    if missing:
-        print(f"WARNING: no topic matched these themes: {missing}")
+    for k, (theme, anchors) in enumerate(TOPIC_SEEDS):
+        top = set(terms[np.argsort(-nmf.components_[k], kind="stable")[:100]])
+        kept = sum(a in top for a in anchors)
+        if kept < len(anchors) / 2:
+            print(f"WARNING: topic {k} ({theme}) kept only {kept} of {len(anchors)} anchor terms")
+        mapping[k] = theme
     return mapping
 
 
@@ -160,8 +174,8 @@ def phrase_gaps(df: pd.DataFrame, min_docs: int = 400, top_n: int = 12) -> pd.Da
                 break
         return pd.DataFrame(chosen)
 
-    up = pick(out.sort_values("gap_pts", ascending=False)).assign(direction="more relief than expected")
-    down = pick(out.sort_values("gap_pts")).assign(direction="less relief than expected")
+    up = pick(out.sort_values("gap_pts", ascending=False, kind="stable")).assign(direction="more relief than expected")
+    down = pick(out.sort_values("gap_pts", kind="stable")).assign(direction="less relief than expected")
     return pd.concat([up, down]).round(4)
 
 
@@ -182,8 +196,9 @@ def main() -> None:
     terms = vec.get_feature_names_out()
     rows = []
     for k, comp in enumerate(nmf.components_):
-        top = terms[comp.argsort()[::-1][:15]]
-        rows.append({"topic_id": k, "theme": mapping[k], "top_terms": ", ".join(top)})
+        top = terms[np.argsort(-comp, kind="stable")[:15]]
+        rows.append({"topic_id": k, "theme": mapping[k], "seed_terms": ", ".join(TOPIC_SEEDS[k][1]),
+                     "top_terms": ", ".join(top)})
     topic_terms = pd.DataFrame(rows)
     topic_terms.to_csv(C.TABLES / "topic_terms.csv", index=False)
     print(topic_terms.to_string(index=False))

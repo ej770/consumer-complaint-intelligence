@@ -15,7 +15,10 @@ DASHBOARD = ROOT / "dashboard"
 # Source: CFPB Consumer Complaint Database extract (complaints received 2019-01-01 to 2020-01-09,
 # all with published consumer narratives), as distributed with "Supervised Machine Learning for
 # Text Analysis in R" (Hvitfeldt & Silge): https://github.com/EmilHvitfeldt/smltar
-RAW_URL = "https://github.com/EmilHvitfeldt/smltar/raw/master/data/complaints.csv.gz"
+# Pinned to a commit and checked against a checksum, so every run analyses the same file.
+RAW_URL = ("https://github.com/EmilHvitfeldt/smltar/raw/"
+           "3ae4ab3e7ce53e3d74dded5f17e7cf8dbe164caa/data/complaints.csv.gz")
+RAW_SHA256 = "f4a5e174d364f1e1a25fac324e1a8224ff4e9454326e6e58abaa194bca93097b"
 
 RANDOM_STATE = 42
 

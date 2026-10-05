@@ -2,6 +2,7 @@
 
 Output: data/processed/complaints_clean.csv.gz (one row per complaint)
 """
+import hashlib
 import re
 import urllib.request
 
@@ -37,6 +38,10 @@ def main() -> None:
         C.RAW.parent.mkdir(parents=True, exist_ok=True)
         print(f"Downloading raw data from {C.RAW_URL} ...")
         urllib.request.urlretrieve(C.RAW_URL, C.RAW)
+    digest = hashlib.sha256(C.RAW.read_bytes()).hexdigest()
+    if digest != C.RAW_SHA256:
+        raise SystemExit(f"{C.RAW} is not the expected extract (sha256 {digest[:12]}...). "
+                         "Delete it and run again to download a fresh copy.")
 
     raw = pd.read_csv(C.RAW)
     print(f"Raw rows: {len(raw):,}")

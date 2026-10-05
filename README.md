@@ -33,7 +33,7 @@ Banks, lenders, debt collectors and credit bureaus answer thousands of consumer 
 |---|---------|----------|
 | 1 | **Who you complain to matters most.** The three credit bureaus handle the same kind of dispute but close them very differently. | Relief rate: Experian **43.7%**, Equifax **25.1%**, TransUnion **4.3%** |
 | 2 | **Money problems at banks get fixed; mortgage problems rarely do.** | Checking/savings **28.3%** relief (23.9% monetary), credit cards **28.1%**, mortgage **6.4%** |
-| 3 | **What went wrong matters.** An NMF topic model found 16 themes in the narratives. Some beat their product mix, some lag it. | Identity theft **28.4%** relief, **+9.5 pts** vs. expected; late-payment disputes **−4.8 pts**; "debt not owed" **−4.6 pts** |
+| 3 | **What went wrong matters.** A topic model sorted the narratives into 16 themes. Some beat their product mix, some lag it. | Identity theft **28.3%** relief, **+9.5 pts** vs. expected; late-payment disputes **−4.2 pts**; "debt not owed" **−4.5 pts** |
 | 4 | **How it's written barely matters, and legal threats don't help.** | Mentions of suing or court: **−3.2 pts** vs. expected. Most negative fifth of narratives (VADER) got relief **18.7%** of the time, least negative fifth **19.7%** |
 | 5 | **Concrete, fixable money problems win; disputes over accurate history lose.** | "overdraft fees" **+13.1 pts**, "fraudulent charges" **+12.5**, "fraud alert" **+11.7**; "bankruptcy court" **−9.9**, "garnished" **−7.3**, "repossession" **−6.7** |
 | 6 | **One in five complaints is copy-paste text** (credit-repair and identity-theft form letters). | **20.2%** of complaints share their exact text with another; those get relief **23.3%** vs. **17.2%** for unique text |
@@ -64,7 +64,7 @@ Where routing struggles: overlapping categories. 21% of vehicle-loan complaints 
 |------|--------|--------------|
 | 1 | `src/01_clean.py` | Load raw data (downloads it if missing), strip `XXXX` masks, engineer intake-time features: language signals, consumer tags, Greater Houston flag (ZIP 770–775), copy-paste text groups |
 | 2 | `src/02_sql_analysis.py` + `sql/*.sql` | Load into SQLite and run 8 SQL analyses (CTEs, window functions, direct standardization) |
-| 3 | `src/03_text_ai.py` | TF-IDF + NMF topic model (18 topics → 16 themes), VADER sentiment per sentence, mix-adjusted phrase analysis |
+| 3 | `src/03_text_ai.py` | TF-IDF + seeded NMF topic model (18 topics → 16 themes), VADER sentiment per sentence, mix-adjusted phrase analysis |
 | 4 | `src/04_models.py` | Routing classifier, relief model (3 variants compared), lift/gains, out-of-fold scores for every complaint |
 | 5 | `src/05_export.py` | Power BI star schema and compact dashboard data |
 | 6 | `src/06_figures.py` | README figures |
@@ -78,7 +78,7 @@ Where routing struggles: overlapping categories. 21% of vehicle-loan complaints 
 ├── .github/workflows/build.yml  # CI: rebuild everything and publish the dashboard
 ├── run_all.py                  # runs steps 1–7 (≈20 min on a laptop)
 ├── requirements.txt
-├── src/                        # pipeline scripts + config.py
+├── src/                        # pipeline scripts, config.py, tfidf.py (shared helper)
 ├── sql/                        # 8 standalone SQL analyses
 ├── outputs/
 │   ├── tables/                 # every result table as CSV
@@ -98,6 +98,16 @@ python run_all.py
 
 The raw file (47 MB) downloads automatically on the first run. All results land in `outputs/`, and the dashboard rebuilds into `dashboard/index.html`.
 
+### Reproducibility
+
+Every run, on any machine, produces the numbers in this README:
+
+- **Same data.** The download is pinned to one commit of the source repository and checked against its SHA-256 checksum.
+- **Same libraries.** Versions are pinned in `requirements.txt`.
+- **Same vocabulary.** scikit-learn's `max_features` breaks ties at the vocabulary cutoff differently on AVX-512 and AVX2 processors. `src/tfidf.py` breaks them alphabetically instead.
+- **Same topics.** An unseeded NMF topic model settled on different topics when only 4 of its 30,000 words changed. Each topic now starts from a few fixed anchor terms (`TOPIC_SEEDS` in `src/03_text_ai.py`), and the themes stay put: changing those 4 words moves fewer than 0.01% of complaints.
+- **Same tie-breaking everywhere else.** Rankings use stable sorts, and cross-validation folds come from a seeded shuffle.
+
 ## Power BI version
 
 Running `python run_all.py` writes a ready-made star schema to `powerbi/`: `fact_complaints.csv` (one row per complaint, with theme, tone, model scores and routing predictions) plus `dim_product`, `dim_theme`, `dim_company` and `dim_date`. (The CSVs are about 23 MB, so they are created locally rather than stored in the repo.)
@@ -116,7 +126,7 @@ Running `python run_all.py` writes a ready-made star schema to `powerbi/`: `fact
 
 ## Skills demonstrated
 
-Python (pandas, NumPy, SciPy) · SQL (CTEs, window functions, standardization) · NLP (TF-IDF, NMF topic modeling, VADER sentiment) · Machine learning (scikit-learn logistic regression, grouped hold-out validation, out-of-fold scoring, lift and gains analysis) · Data visualization (matplotlib; hand-built HTML/JS dashboard) · BI data modeling (star schema, DAX) · Automation (GitHub Actions CI, GitHub Pages)
+Python (pandas, NumPy, SciPy) · SQL (CTEs, window functions, standardization) · NLP (TF-IDF, seeded NMF topic modeling, VADER sentiment) · Machine learning (scikit-learn logistic regression, grouped hold-out validation, out-of-fold scoring, lift and gains analysis) · Data visualization (matplotlib; hand-built HTML/JS dashboard) · BI data modeling (star schema, DAX) · Automation and reproducibility (GitHub Actions CI, GitHub Pages, pinned data and dependencies)
 
 ---
 

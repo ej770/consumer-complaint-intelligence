@@ -17,7 +17,6 @@ and data/processed/model_scores.csv.gz (scores for every complaint, used by the 
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix, hstack
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (accuracy_score, average_precision_score, classification_report,
                              confusion_matrix, f1_score, roc_auc_score)
@@ -25,6 +24,7 @@ from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 from sklearn.preprocessing import OneHotEncoder
 
 import config as C
+from tfidf import fit_tfidf
 
 CATEGORICAL = ["product", "sub_product", "issue", "sub_issue", "company_top100", "state"]
 FLAGS = ["older_american", "servicemember", "mentions_attorney", "mentions_legal_action",
@@ -40,17 +40,16 @@ def load() -> pd.DataFrame:
     return df
 
 
-def text_vectorizer(max_features: int) -> TfidfVectorizer:
-    return TfidfVectorizer(ngram_range=(1, 2), min_df=5, max_df=0.5, sublinear_tf=True,
-                           max_features=max_features)
+def text_features(texts: pd.Series, max_features: int):
+    """TF-IDF on 1-2 grams fitted on `texts`; returns (fitted vectorizer, matrix for `texts`)."""
+    return fit_tfidf(texts, max_features, ngram_range=(1, 2), min_df=5, max_df=0.5)
 
 
 # --------------------------------------------------------------------------------------
 # A. Routing model
 # --------------------------------------------------------------------------------------
 def routing_model(df, tr, te):
-    vec = text_vectorizer(100_000)
-    X_tr = vec.fit_transform(df["narrative_clean"].iloc[tr])
+    vec, X_tr = text_features(df["narrative_clean"].iloc[tr], 100_000)
     X_te = vec.transform(df["narrative_clean"].iloc[te])
     y_tr, y_te = df["product"].iloc[tr], df["product"].iloc[te]
 
@@ -100,14 +99,13 @@ def build_features(df, tr_idx, te_idx, vec=None, ohe=None):
     num = df[FLAGS + ["log_words"]].to_numpy(dtype=float)
     S = hstack([ohe.transform(df[CATEGORICAL]), csr_matrix(num)]).tocsr()
     if vec is None:
-        vec = text_vectorizer(50_000)
-        vec.fit(df["narrative_clean"].iloc[tr_idx])
+        vec, _ = text_features(df["narrative_clean"].iloc[tr_idx], 50_000)
     T = vec.transform(df["narrative_clean"])
     return S[tr_idx], S[te_idx], T[tr_idx], T[te_idx], vec, ohe
 
 
 def lift_stats(y, score):
-    order = np.argsort(-score)
+    order = np.argsort(-score, kind="stable")
     y_sorted = np.asarray(y)[order]
     n = len(y_sorted)
     top20 = y_sorted[: int(0.2 * n)]
@@ -132,7 +130,8 @@ def relief_model(df, tr, te):
     for name, (A, B) in variants.items():
         clf = LogisticRegression(C=0.5, solver="liblinear", max_iter=2000, random_state=C.RANDOM_STATE)
         clf.fit(A, y_tr)
-        s = clf.predict_proba(B)[:, 1]
+        # Rounded to 6 decimals: smaller differences are floating-point noise, not signal
+        s = clf.predict_proba(B)[:, 1].round(6)
         models[name] = (clf, s)
         rows.append({"model": name, "roc_auc": roc_auc_score(y_te, s),
                      "pr_auc": average_precision_score(y_te, s), "base_rate": y_te.mean(),
@@ -159,7 +158,10 @@ def out_of_fold_relief_scores(df, n_splits=5):
     """Relief score for every complaint, each one predicted by a model that never saw it
     (or any copy of its text). Used for dashboards / Power BI prioritisation views."""
     scores = np.zeros(len(df))
-    for k, (tr, te) in enumerate(GroupKFold(n_splits=n_splits).split(df, groups=df["text_group"])):
+    # shuffle=True assigns text groups to folds with a seeded shuffle. The default assignment
+    # orders groups with an unstable sort, so the folds could differ between machines.
+    folds = GroupKFold(n_splits=n_splits, shuffle=True, random_state=C.RANDOM_STATE)
+    for k, (tr, te) in enumerate(folds.split(df, groups=df["text_group"])):
         S_tr, S_te, T_tr, T_te, _, _ = build_features(df, tr, te)
         clf = LogisticRegression(C=0.5, solver="liblinear", max_iter=2000, random_state=C.RANDOM_STATE)
         clf.fit(hstack([S_tr, T_tr]).tocsr(), df["relief"].iloc[tr].values)

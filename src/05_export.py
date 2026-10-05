@@ -83,7 +83,7 @@ def pick_excerpts(df: pd.DataFrame, per_theme: int = 2) -> dict:
     for theme, g in pool.groupby("theme"):
         if theme == "Too short to classify":
             continue
-        g = g.sort_values("theme_strength", ascending=False).head(300)
+        g = g.sort_values("theme_strength", ascending=False, kind="stable").head(300)
         picks, seen = [], []
         for _, r in g.iterrows():
             text = re.sub(r"\s+", " ", r["narrative"]).strip()
